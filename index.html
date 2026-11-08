@@ -1,0 +1,778 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"></head><body><title>Карта AVTOHABR</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700&family=Manrope:wght@400;500;600;700;800&display=swap">
+<style>
+/* Layout: полноэкранный холст-карта (мир с камерой) + плавающие панели: сверху управление, слева инструменты рисования,
+   справа карточка пункта, снизу мини-карта. Ниже холста — те же ветки карточками для чтения подряд. */
+:root {
+  --bg: #EEF2FA; --bg2: #E3E9F6; --panel: rgba(255,255,255,0.86); --solid: #FFFFFF; --ink: #0A1020; --muted: #56637F; --line: rgba(10,16,32,0.12);
+  --accent: #2F74D8; --accent2: #6A4BE0; --glowA: rgba(74,143,232,0.22); --glowB: rgba(138,92,216,0.16); --dot: rgba(10,16,32,0.07);
+  --b1: #2F74D8; --b2: #0E9F8E; --b3: #D9822B; --b4: #8A5CD8; --b5: #D2476A; --b6: #3E8E3A; --b7: #B8860B; --b8: #2C8FB5; --b9: #C2410C; --b10: #4F46E5; --b11: #0F766E; --b12: #A21CAF;
+  --nodeText: #0A1020; --shadow: 0 10px 40px rgba(20,30,60,0.14);
+  --display: 'Unbounded', 'Segoe UI', system-ui, sans-serif; --body: 'Manrope', 'Segoe UI', system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #060A15; --bg2: #0B1224; --panel: rgba(17,25,46,0.82); --solid: #111A2E; --ink: #E8EEFA; --muted: #93A1BF; --line: rgba(255,255,255,0.10);
+  --accent: #6FA8F5; --accent2: #A58BFF; --glowA: rgba(74,143,232,0.20); --glowB: rgba(165,139,255,0.14); --dot: rgba(255,255,255,0.05);
+  --b1: #6FA8F5; --b2: #3CC9B6; --b3: #F0A55A; --b4: #B293F5; --b5: #F07996; --b6: #7CC874; --b7: #E3BC4F; --b8: #5FC3E8; --b9: #FB8F5C; --b10: #8B8BFF; --b11: #4FD1C5; --b12: #E879F9;
+  --nodeText: #E8EEFA; --shadow: 0 10px 40px rgba(0,0,0,0.45); color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #060A15; --bg2: #0B1224; --panel: rgba(17,25,46,0.82); --solid: #111A2E; --ink: #E8EEFA; --muted: #93A1BF; --line: rgba(255,255,255,0.10);
+  --accent: #6FA8F5; --accent2: #A58BFF; --glowA: rgba(74,143,232,0.20); --glowB: rgba(165,139,255,0.14); --dot: rgba(255,255,255,0.05);
+  --b1: #6FA8F5; --b2: #3CC9B6; --b3: #F0A55A; --b4: #B293F5; --b5: #F07996; --b6: #7CC874; --b7: #E3BC4F; --b8: #5FC3E8; --b9: #FB8F5C; --b10: #8B8BFF; --b11: #4FD1C5; --b12: #E879F9;
+  --nodeText: #E8EEFA; --shadow: 0 10px 40px rgba(0,0,0,0.45); color-scheme: dark }
+* { box-sizing: border-box }
+[hidden] { display: none !important }
+body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.55;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 22px 48px }
+.wrap { max-width: 1440px; margin: 0 auto; display: grid; gap: 18px }
+header { display: flex; flex-wrap: wrap; gap: 10px 24px; align-items: end; justify-content: space-between }
+.htext { display: grid; gap: 6px; min-width: 0; max-width: 820px }
+.brand { font-family: var(--display); font-weight: 700; letter-spacing: 0.16em; font-size: 12px; background: linear-gradient(90deg, var(--accent), var(--accent2)); -webkit-background-clip: text; background-clip: text; color: transparent }
+h1 { font-family: var(--display); font-weight: 700; font-size: clamp(24px, 4vw, 42px); line-height: 1.12; margin: 0; text-wrap: balance }
+.lead { color: var(--muted); margin: 0; max-width: 72ch }
+.stats { display: flex; gap: 18px; flex-wrap: wrap }
+.stat { display: grid; font-variant-numeric: tabular-nums }
+.stat b { font-family: var(--display); font-size: 22px; font-weight: 500 }
+.stat span { font-size: 12px; color: var(--muted); letter-spacing: 0.04em }
+.note { border: 1px solid var(--line); background: var(--solid); border-radius: 12px; padding: 10px 14px; color: var(--muted); font-size: 14px }
+.note b { color: var(--ink) }
+
+/* холст */
+.stage { position: relative; border: 1px solid var(--line); border-radius: 20px; overflow: hidden; height: min(82vh, 860px); min-height: 480px;
+  background: radial-gradient(1200px 600px at 15% 10%, var(--glowA), transparent 60%), radial-gradient(900px 600px at 90% 90%, var(--glowB), transparent 60%), var(--bg2);
+  touch-action: none; user-select: none; -webkit-user-select: none; box-shadow: var(--shadow) }
+.stage::before { content: ""; position: absolute; inset: 0; background-image: radial-gradient(var(--dot) 1.3px, transparent 1.3px); background-size: 24px 24px; pointer-events: none }
+.stage.zen { position: fixed; inset: 0; height: auto; border-radius: 0; z-index: 50; border: 0 }
+.stage svg.world { position: absolute; inset: 0; width: 100%; height: 100% }
+.stage[data-tool="hand"] { cursor: grab } .stage.panning { cursor: grabbing }
+.stage[data-tool="pen"], .stage[data-tool="marker"], .stage[data-tool="rect"], .stage[data-tool="ellipse"], .stage[data-tool="arrow"], .stage[data-tool="line"] { cursor: crosshair }
+.stage[data-tool="text"], .stage[data-tool="sticky"] { cursor: text } .stage[data-tool="eraser"] { cursor: cell } .stage[data-tool="laser"] { cursor: none }
+
+.node { cursor: pointer }
+.node .lbl { font-family: var(--body); font-size: 13px; font-weight: 500 }
+.node.d0 .lbl { font-family: var(--display); font-size: 18px; font-weight: 700 }
+.node.d1 .lbl { font-weight: 800; font-size: 14px }
+.node.dim, .link.dim { opacity: 0.18 }
+.node.hit .bgr { stroke-width: 3 }
+.node.sel .bgr { stroke-width: 2.6 }
+.node:focus { outline: none } .node:focus-visible .bgr { stroke-dasharray: 4 3 }
+.link { fill: none; stroke-linecap: round }
+.mark { pointer-events: visiblePainted }
+.stage[data-tool="hand"] .mark.mine { cursor: move }
+@keyframes pulse { 0%,100% { opacity: .55 } 50% { opacity: 1 } }
+.found .bgr { animation: pulse 1.2s ease-in-out infinite }
+
+/* плавающие панели */
+.glass { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; backdrop-filter: blur(14px) saturate(1.4); -webkit-backdrop-filter: blur(14px) saturate(1.4); box-shadow: var(--shadow) }
+.topbar { position: absolute; left: 12px; right: 12px; top: 12px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; pointer-events: none; z-index: 3 }
+.topbar > * { pointer-events: auto }
+.grp { display: flex; align-items: center; gap: 2px; padding: 3px }
+.btn { font: 700 12.5px var(--body); color: var(--ink); background: transparent; border: 0; border-radius: 10px; padding: 7px 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap }
+.btn:hover { background: var(--line) }
+.btn.on { background: var(--accent); color: #fff }
+.btn:focus-visible, .tool:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px }
+.btn svg, .tool svg { width: 17px; height: 17px; stroke: currentColor; fill: none; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; flex: none }
+.search { display: flex; align-items: center; gap: 6px; padding: 3px 8px; min-width: 0; flex: 1 1 200px; max-width: 340px }
+.search input { border: 0; background: transparent; color: var(--ink); font: 600 13.5px var(--body); outline: none; width: 100%; min-width: 0; padding: 6px 0 }
+.search kbd, .kbd { font: 700 11px var(--body); color: var(--muted); border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px }
+.spacer { flex: 1 }
+.crumbs { position: absolute; left: 12px; top: 64px; padding: 6px 8px; display: flex; gap: 4px; align-items: center; flex-wrap: wrap; z-index: 3; max-width: calc(100% - 24px) }
+.crumbs .btn { padding: 4px 8px }
+.tools { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); display: grid; gap: 2px; padding: 5px; z-index: 3 }
+.tool { width: 38px; height: 38px; border: 0; border-radius: 10px; background: transparent; color: var(--ink); cursor: pointer; display: grid; place-items: center; position: relative }
+.tool:hover { background: var(--line) } .tool.on { background: var(--accent); color: #fff }
+.tool[disabled] { opacity: .35; cursor: not-allowed }
+.sep { height: 1px; background: var(--line); margin: 4px 6px }
+.swatches { display: grid; grid-template-columns: repeat(2, 16px); gap: 5px; justify-content: center; padding: 4px 0 }
+.sw { width: 16px; height: 16px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; padding: 0 }
+.sw.on { border-color: var(--ink) }
+.sizes { display: grid; gap: 2px; justify-items: center }
+.sz { width: 30px; height: 22px; border: 0; background: transparent; border-radius: 8px; cursor: pointer; display: grid; place-items: center }
+.sz i { display: block; border-radius: 9px; background: var(--ink) } .sz.on { background: var(--line) }
+.side { position: absolute; right: 12px; top: 64px; width: min(360px, calc(100% - 24px)); max-height: calc(100% - 180px); overflow: auto; padding: 16px 16px 14px; z-index: 4; display: grid; gap: 10px; user-select: text }
+.side h3 { margin: 0; font-family: var(--display); font-weight: 500; font-size: 18px; line-height: 1.25; padding-right: 28px; text-wrap: balance }
+.side .path { font-size: 12px; color: var(--muted) }
+.side p { margin: 0; color: var(--muted) }
+.side .kids { display: flex; flex-wrap: wrap; gap: 6px }
+.chip { font: 600 12.5px var(--body); border: 1px solid var(--line); background: transparent; color: var(--ink); border-radius: 999px; padding: 4px 10px; cursor: pointer }
+.chip:hover { border-color: var(--accent) }
+.side .row { display: flex; gap: 6px; flex-wrap: wrap }
+.side .x { position: absolute; right: 8px; top: 8px; border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 22px; line-height: 1; padding: 4px 8px }
+.side textarea, .side input[type=text] { width: 100%; font: 500 14px var(--body); color: var(--ink); background: var(--solid); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px }
+.colors { display: flex; gap: 6px; flex-wrap: wrap }
+.minimap { position: absolute; right: 12px; bottom: 12px; width: 190px; height: 124px; z-index: 3; overflow: hidden; cursor: pointer; padding: 0 }
+.minimap canvas { width: 100%; height: 100%; display: block }
+.zoomer { position: absolute; right: 212px; bottom: 12px; z-index: 3 }
+.zoomer .btn { padding: 6px 9px; font-variant-numeric: tabular-nums }
+.status { position: absolute; left: 62px; bottom: 14px; z-index: 3; font-size: 12px; color: var(--muted); max-width: calc(100% - 300px); pointer-events: none }
+.present { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 5; display: flex; gap: 6px; align-items: center; padding: 5px 8px }
+.present b { font-variant-numeric: tabular-nums; font-size: 13px; padding: 0 6px }
+.textedit { position: absolute; z-index: 6; min-width: 140px; min-height: 40px; font: 600 16px var(--body); color: var(--ink); background: var(--solid); border: 2px solid var(--accent); border-radius: 10px; padding: 6px 8px; resize: both; outline: none }
+.help { position: absolute; inset: 0; z-index: 8; display: grid; place-items: center; background: rgba(0,0,0,0.35) }
+.help .glass { width: min(640px, calc(100% - 32px)); max-height: calc(100% - 40px); overflow: auto; padding: 20px 22px; background: var(--solid) }
+.help h3 { margin: 0 0 10px; font-family: var(--display); font-weight: 500 }
+.help dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0; font-size: 14px }
+.help dt { text-align: right }
+.toast { position: absolute; left: 50%; top: 70px; transform: translateX(-50%); z-index: 9; padding: 8px 14px; font-weight: 600; font-size: 13.5px; pointer-events: none }
+.laserdot { position: absolute; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; background: #ff3b3b; box-shadow: 0 0 12px 4px rgba(255,59,59,.6); pointer-events: none; z-index: 6 }
+
+h2 { font-family: var(--display); font-weight: 500; font-size: 20px; margin: 10px 0 0 }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap: 14px }
+.card { background: var(--solid); border: 1px solid var(--line); border-radius: 16px; padding: 16px 18px; min-width: 0; position: relative; overflow: hidden }
+.card::before { content: ""; position: absolute; inset: 0 0 auto; height: 4px; background: linear-gradient(90deg, var(--c), transparent) }
+.card h3 { margin: 0 0 8px; font-family: var(--display); font-weight: 500; font-size: 16px; color: var(--c); display: flex; gap: 8px; align-items: center }
+.card h3 svg { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round }
+.card ul { margin: 0; padding-left: 18px; display: grid; gap: 4px }
+.card li { font-size: 14px }
+.card li ul { margin-top: 4px; color: var(--muted) }
+.card .d { color: var(--muted) }
+.card .go { position: absolute; right: 10px; top: 12px }
+footer { color: var(--muted); font-size: 13px }
+
+@media (max-width: 720px) {
+  .stage { height: 78vh }
+  .tools { display: none; top: auto; left: 12px; right: 12px; bottom: 58px; transform: none; overflow-x: auto; grid-auto-flow: column; grid-template-rows: 38px; align-items: center }
+  .stage.drawing .tools { display: grid }
+  .sep { width: 1px; height: 26px; margin: 0 4px }
+  .swatches { grid-template-columns: repeat(6, 16px) } .sizes { grid-auto-flow: column }
+  #bDraw { display: inline-flex !important }
+  .side { top: auto; bottom: 12px; right: 12px; left: 12px; width: auto; max-height: 55% }
+  .minimap { display: none } .zoomer { right: 12px } .status { display: none }
+  .hide-sm { display: none !important }
+}
+@media (prefers-reduced-motion: reduce) { .found .bgr { animation: none } }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="htext">
+      <div class="brand">AVTOHABR</div>
+      <h1>Что умеет AVTOHABR</h1>
+      <p class="lead">Онлайн-запись в автосервис для водителей и рабочий кабинет для самого сервиса. Нажимайте на ветки карты, чтобы раскрыть подробности.</p>
+    </div>
+    <div class="stats" id="stats"></div>
+  </header>
+  
+
+  <div class="stage" id="stage" data-tool="hand">
+    <svg class="world" id="svg" aria-label="Ментальная карта">
+      <defs>
+        <linearGradient id="rootGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4A8FE8"/><stop offset="1" stop-color="#7A5CF0"/></linearGradient>
+        <filter id="glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="14" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+        <filter id="soft" x="-20%" y="-40%" width="140%" height="180%"><feDropShadow dx="0" dy="3" stdDeviation="5" flood-opacity="0.16"/></filter>
+      </defs>
+      <g id="cam"><g id="gLinks"></g><g id="gNodes"></g><g id="gInk"></g><g id="gTemp"></g></g>
+    </svg>
+
+    <div class="topbar">
+      <label class="search glass" for="q"><svg viewBox="0 0 24 24" width="17" height="17" style="stroke:var(--muted);fill:none;stroke-width:2;stroke-linecap:round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><input id="q" type="search" placeholder="Найти на карте" autocomplete="off"><kbd class="hide-sm">/</kbd></label>
+      <div class="grp glass" role="group" aria-label="Вид карты">
+        <button class="btn on" data-layout="map" type="button" title="Карта (1)">Карта</button>
+        <button class="btn" data-layout="tree" type="button" title="Дерево (2)">Дерево</button>
+        <button class="btn" data-layout="radial" type="button" title="Солнце (3)">Солнце</button>
+      </div>
+      <div class="grp glass hide-sm" role="group" aria-label="Глубина">
+        <button class="btn" data-depth="1" type="button" title="Только главные ветки">1</button>
+        <button class="btn" data-depth="2" type="button">2</button>
+        <button class="btn" data-depth="9" type="button" title="Развернуть всё">Всё</button>
+      </div>
+      <span class="spacer"></span>
+      <div class="grp glass" role="group" aria-label="Режимы">
+        <button class="btn" id="bDraw" type="button" title="Рисовать" style="display:none"><svg viewBox="0 0 24 24"><path d="M4 20l4-1 11-11-3-3L5 16zM14 6l3 3"/></svg></button>
+        <button class="btn" id="bPresent" type="button" title="Презентация (P)"><svg viewBox="0 0 24 24"><path d="M3 4h18v12H3z"/><path d="M8 20h8M12 16v4"/><path d="M10 8l5 2-5 2z"/></svg><span class="hide-sm">Показ</span></button>
+        <button class="btn" id="bZen" type="button" title="Во весь экран (Z)"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+        <button class="btn" id="bPng" type="button" title="Сохранить картинкой" hidden><svg viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg></button>
+        <button class="btn" id="bTheme" type="button" title="Светлая или тёмная тема"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
+        <button class="btn" id="bHelp" type="button" title="Горячие клавиши (?)">?</button>
+      </div>
+    </div>
+    <div class="crumbs glass" id="crumbs" hidden></div>
+
+    <div class="tools glass" id="tools" role="toolbar" aria-label="Рисование"></div>
+    <aside class="side glass" id="side" hidden></aside>
+    <div class="zoomer glass grp"><button class="btn" id="bOut" type="button" aria-label="Отдалить">−</button><button class="btn" id="bFit" type="button" title="Вписать (F)"><span id="zv">100%</span></button><button class="btn" id="bIn" type="button" aria-label="Приблизить">+</button></div>
+    <button class="minimap glass" id="mini" type="button" aria-label="Мини-карта: нажмите, чтобы перейти"><canvas id="miniC" width="380" height="248"></canvas></button>
+    <div class="status" id="status"></div>
+    <div class="present glass" id="presentBar" hidden><button class="btn" id="pPrev" type="button">←</button><b id="pNum"></b><button class="btn" id="pNext" type="button">→</button><button class="btn" id="pExit" type="button">Выйти</button></div>
+    <div class="help" id="help" hidden><div class="glass">
+      <h3>Как пользоваться</h3>
+      <dl>
+        <dt><span class="kbd">клик</span></dt><dd>раскрыть ветку и открыть карточку пункта</dd>
+        <dt><span class="kbd">двойной клик</span></dt><dd>фокус: показать только эту ветку</dd>
+        <dt><span class="kbd">тянуть</span> / <span class="kbd">колесо</span></dt><dd>двигать карту / масштаб (на телефоне — двумя пальцами)</dd>
+        <dt><span class="kbd">/</span></dt><dd>поиск; <span class="kbd">Enter</span> — следующий найденный</dd>
+        <dt><span class="kbd">1</span> <span class="kbd">2</span> <span class="kbd">3</span></dt><dd>вид: карта, дерево, солнце</dd>
+        <dt><span class="kbd">F</span> · <span class="kbd">Z</span> · <span class="kbd">P</span></dt><dd>вписать · во весь экран · презентация (стрелки листают)</dd>
+        <dt><span class="kbd">V</span></dt><dd>рука: двигать карту и рисунки</dd>
+        <dt><span class="kbd">B</span> <span class="kbd">M</span></dt><dd>ручка, маркер</dd>
+        <dt><span class="kbd">R</span> <span class="kbd">O</span> <span class="kbd">A</span> <span class="kbd">L</span></dt><dd>прямоугольник, овал, стрелка, линия (Shift — ровно)</dd>
+        <dt><span class="kbd">T</span> <span class="kbd">S</span></dt><dd>текст, стикер (двойной клик по стикеру — изменить)</dd>
+        <dt><span class="kbd">E</span> · <span class="kbd">X</span></dt><dd>ластик · лазерная указка для показа</dd>
+        <dt><span class="kbd">Ctrl+Z</span> <span class="kbd">Ctrl+Y</span></dt><dd>отменить, вернуть</dd>
+        <dt><span class="kbd">Esc</span></dt><dd>закрыть, выйти из фокуса</dd>
+      </dl>
+      <p style="color:var(--muted);margin:12px 0 0">Ваши рисунки и стикеры видите только вы: они хранятся в этом браузере. Карту для всех они не меняют.</p>
+      <div style="margin-top:14px"><button class="btn on" id="helpOk" type="button">Понятно</button></div>
+    </div></div>
+  </div>
+
+  <h2>Всё по веткам</h2>
+  <div class="cards" id="cards"></div>
+  <footer>AVTOHABR · <a href="https://app.avtohabr.ru" style="color:inherit">app.avtohabr.ru</a></footer>
+</div>
+
+<script>
+const MODE = 'public';
+const DATA = {"t":"AVTOHABR","c":[{"t":"Водителю","d":"Найти сервис и записаться за минуту, бесплатно","c":[{"t":"Каталог сервисов на карте","c":[{"t":"Поиск по услуге, марке и модели","c":[]},{"t":"По городу и району","c":[]},{"t":"Ближайший сервис с расстоянием","c":[]},{"t":"Дешевле и дороже рядом","c":[]}]},{"t":"Онлайн-запись","c":[{"t":"Свободное время видно сразу","c":[]},{"t":"Несколько услуг в одной записи","c":[]},{"t":"Подтверждение и напоминание","c":[]}]},{"t":"Личный кабинет","c":[{"t":"Мои записи и история","c":[]},{"t":"Гараж: несколько машин","c":[]},{"t":"Избранные сервисы","c":[]},{"t":"Отзывы","c":[]}]},{"t":"Уведомления","d":"В MAX, Telegram или push — как удобнее","c":[]},{"t":"Срочная помощь: заявка «нужна помощь сейчас»","c":[]},{"t":"Ассистент подскажет, какая услуга нужна","c":[]},{"t":"Приложение на телефон и компьютер","c":[]}],"i":"car"},{"t":"Автосервису","d":"Всё для работы сервиса в одном кабинете","c":[{"t":"Расписание и записи","c":[{"t":"Посты и мастера","c":[]},{"t":"Записи с сайта и по телефону","c":[]},{"t":"Календарь мастера на телефоне","c":[]}]},{"t":"Заказ-наряды","c":[{"t":"Работы по нормо-часам","c":[]},{"t":"Подбор марки и модели из списка","c":[]},{"t":"Дефектовка и согласование с клиентом","c":[]},{"t":"Запчасти со склада","c":[]},{"t":"Печать документов","c":[]}]},{"t":"Склад и магазин","c":[{"t":"Приход, остатки, инвентаризация","c":[]},{"t":"Поставщики: цены и заказ","c":[]},{"t":"Продажа без наряда","c":[]},{"t":"Маркированный товар","c":[]}]},{"t":"Клиенты и машины","c":[{"t":"Карточка клиента и его машины","c":[]},{"t":"История обслуживания","c":[]},{"t":"Организации и автопарки","c":[]},{"t":"Задачи «перезвонить»","c":[]}]},{"t":"Деньги","c":[{"t":"Касса и чеки","c":[]},{"t":"Оплата картой и по ссылке","c":[]},{"t":"Счета и акты","c":[]},{"t":"Расходы и прибыль","c":[]}]},{"t":"Команда","c":[{"t":"Роли и права","c":[]},{"t":"Зарплата мастеров","c":[]},{"t":"Сотрудник видит только своё","c":[]}]},{"t":"Отчёты","c":[{"t":"Выручка по дням","c":[]},{"t":"Загрузка постов","c":[]},{"t":"Работы и мастера","c":[]}]},{"t":"Свой сайт сервиса","c":[{"t":"Готов сразу","c":[]},{"t":"Услуги, цены, фото, отзывы","c":[]},{"t":"QR-плакат для стойки","c":[]}]}],"i":"wrench"},{"t":"Как это работает","d":"Путь клиента от поиска до выдачи машины","c":[{"t":"1. Водитель находит сервис","c":[]},{"t":"2. Записывается на свободное время","c":[]},{"t":"3. Сервис видит запись в расписании","c":[]},{"t":"4. Приём машины и заказ-наряд","c":[]},{"t":"5. Согласование работ с клиентом","c":[]},{"t":"6. Ремонт и запчасти со склада","c":[]},{"t":"7. Оплата и чек","c":[]},{"t":"8. Напоминание о следующем ТО","c":[]}],"i":"route"},{"t":"Подключения","d":"По желанию сервиса","c":[{"t":"Онлайн-касса","c":[]},{"t":"Банковский терминал","c":[]},{"t":"Честный ЗНАК","c":[]},{"t":"Поставщики запчастей","c":[]},{"t":"Электронный документооборот","c":[]},{"t":"Телефония","c":[]},{"t":"Интернет-магазин","c":[]},{"t":"Календари мастеров","c":[]}],"i":"plug"},{"t":"Надёжность","c":[{"t":"Данные хранятся в России","c":[]},{"t":"Ежедневные резервные копии","c":[]},{"t":"Права сотрудников по ролям","c":[]},{"t":"Согласия клиентов по закону","c":[]},{"t":"Доступ с любого устройства","c":[]}],"i":"shield"},{"t":"Условия","c":[{"t":"Водителям — бесплатно навсегда","c":[]},{"t":"Сервисам — 14 дней бесплатно","c":[]},{"t":"Дальше 5 000 ₽ в месяц","c":[]},{"t":"Без установки: работает в браузере","c":[]},{"t":"Помощь с запуском","c":[]}],"i":"tag"}]};
+const NS = 'http://www.w3.org/2000/svg';
+const $ = (id) => document.getElementById(id);
+const stage = $('stage'), svg = $('svg'), cam = $('cam'), gLinks = $('gLinks'), gNodes = $('gNodes'), gInk = $('gInk'), gTemp = $('gTemp');
+const cssv = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const COLORS = ['--b1','--b2','--b3','--b4','--b5','--b6','--b7','--b8','--b9','--b10','--b11','--b12'];
+const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const ICONS = {
+  car: 'M5 16h14M6 16l1.5-5h9L18 16M7 16v2M17 16v2M8.5 13.5h.01M15.5 13.5h.01',
+  wrench: 'M14.5 6.5a4 4 0 0 0 5 5L12 19a2.1 2.1 0 0 1-3-3l7.5-7.5a4 4 0 0 0-2-2z',
+  route: 'M6 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM18 9a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM8 17h7a3 3 0 0 0 0-6H9a3 3 0 0 1 0-6h7',
+  plug: 'M9 3v5M15 3v5M7 8h10v3a5 5 0 0 1-10 0zM12 16v5',
+  shield: 'M12 3l7 3v5c0 5-3.5 8-7 10-3.5-2-7-5-7-10V6z',
+  tag: 'M3 12V4h8l10 10-8 8zM7.5 7.5h.01',
+  box: 'M3 7l9-4 9 4-9 4zM3 7v10l9 4 9-4V7M12 11v10',
+  server: 'M4 4h16v6H4zM4 14h16v6H4zM8 7h.01M8 17h.01',
+  code: 'M8 8l-4 4 4 4M16 8l4 4-4 4M14 5l-4 14',
+  scale: 'M12 4v16M5 20h14M5 8h14M5 8l-3 6a3 3 0 0 0 6 0zM19 8l-3 6a3 3 0 0 0 6 0z',
+  mega: 'M3 10v4h3l7 4V6L6 10zM16 9a3 3 0 0 1 0 6M19 6a7 7 0 0 1 0 12',
+  rules: 'M7 4h10v16H7zM10 8h4M10 12h4M10 16h2',
+  flag: 'M5 21V4M5 4h11l-2 4 2 4H5',
+  layers: 'M12 3l9 5-9 5-9-5zM3 13l9 5 9-5',
+  users: 'M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM3 20a6 6 0 0 1 12 0M16 4a3.5 3.5 0 0 1 0 7M21 20a6 6 0 0 0-4-5.6',
+  spark: 'M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5L18 18M6 18l2.5-2.5M15.5 8.5L18 6',
+};
+const ico = (name, size = 16) => `<svg viewBox="0 0 24 24" width="${size}" height="${size}"><path d="${ICONS[name] || ICONS.spark}"/></svg>`;
+
+// ───────── модель ─────────
+const byKey = new Map();
+function keyOf(n, parentKey) { let h = 5381; const s = parentKey + '>' + n.t; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return 'n' + (h >>> 0).toString(36) }
+function prep(n, depth, color, side, parent) {
+  n.key = n.key || keyOf(n, parent ? parent.key : ''); n.depth = depth; n.color = n.color || color; n.side = side; n.parent = parent; n.c = n.c || [];
+  if (n.open === undefined) n.open = depth < 1; byKey.set(n.key, n);
+  n.c.forEach((k, i) => prep(k, depth + 1, depth === 0 ? COLORS[i % COLORS.length] : n.color, depth === 0 ? (i < Math.ceil(n.c.length / 2) ? 1 : -1) : side, n));
+}
+const BASE = JSON.parse(JSON.stringify(DATA));
+let ROOT;
+let focusNode = null;
+const over = new Map();   // правки пунктов (только карта владельца): key → {t,d,color,star,done,hidden,added,parent,order}
+function rebuild() {
+  const keepOpen = new Set([...byKey.values()].filter((n) => n.open).map((n) => n.key));
+  byKey.clear();
+  ROOT = JSON.parse(JSON.stringify(BASE));
+  prep(ROOT, 0, '--accent', 0, null);
+  // добавленные пункты
+  const added = [...over.entries()].filter(([, o]) => o.added && !o.hidden).sort((a, b) => (a[1].order || 0) - (b[1].order || 0));
+  for (let pass = 0; pass < 3; pass++) for (const [k, o] of added) {
+    if (byKey.has(k)) continue; const p = byKey.get(o.parent); if (!p) continue;
+    const n = { t: o.t || 'Новый пункт', d: o.d || '', c: [], key: k, mine: true }; p.c.push(n);
+    prep(n, p.depth + 1, p.depth === 0 ? COLORS[p.c.length % COLORS.length] : p.color, p.depth === 0 ? (p.c.length % 2 ? 1 : -1) : p.side, p);
+  }
+  for (const [k, o] of over) { const n = byKey.get(k); if (!n) continue; if (o.t) n.t = o.t; if (o.d !== undefined) n.d = o.d; if (o.color) n.color = o.color; n.star = !!o.star; n.done = !!o.done; if (o.hidden && n.parent) n.parent.c = n.parent.c.filter((x) => x !== n) }
+  for (const n of byKey.values()) if (keepOpen.has(n.key)) n.open = true;
+  if (focusNode) focusNode = byKey.get(focusNode.key) || null;
+}
+rebuild();
+
+// ───────── измерение ─────────
+const cv = document.createElement('canvas').getContext('2d');
+const fontFor = (d) => d === 0 ? '700 18px Unbounded, sans-serif' : d === 1 ? '800 14px Manrope, sans-serif' : '500 13px Manrope, sans-serif';
+function measure(t, d) { cv.font = fontFor(d); return cv.measureText(t).width }
+function sizeNode(n, d) {
+  const iconW = d <= 1 && (n.i || d === 0) ? 24 : 0;
+  const badge = n.c.length && d > 0 ? 26 : 0, flags = (n.star ? 16 : 0) + (n.done ? 16 : 0);
+  n.tw = Math.min(measure(n.t, d), d === 0 ? 420 : d === 1 ? 300 : 280);
+  n.w = n.tw + (d === 0 ? 52 : 26) + iconW + badge + flags; n.h = d === 0 ? 58 : d === 1 ? 40 : 32; n.vd = d;
+}
+
+// ───────── раскладки ─────────
+let layoutName = 'map';
+const GX = 54, GY = 10;
+function visibleFrom(r, out = []) { out.push(r); if (r.open || r === focusRoot()) for (const k of r.c) visibleFrom(k, out); return out }
+function focusRoot() { return focusNode || ROOT }
+function subH(n) { const kids = (n.open || n === focusRoot()) ? n.c : []; n.sh = kids.length ? Math.max(n.h, kids.reduce((a, k) => a + subH(k), 0) + GY * (kids.length - 1)) : n.h; return n.sh }
+function placeTree(n, x, top, dir) {
+  n.x = dir > 0 ? x : x - n.w; n.y = top + n.sh / 2;
+  const kids = (n.open || n === focusRoot()) ? n.c : []; if (!kids.length) return;
+  let y = top + (n.sh - (kids.reduce((a, k) => a + k.sh, 0) + GY * (kids.length - 1))) / 2;
+  for (const k of kids) { placeTree(k, dir > 0 ? n.x + n.w + GX : n.x - GX, y, dir); y += k.sh + GY }
+}
+function layout() {
+  const R = focusRoot(); const vis = visibleFrom(R);
+  for (const n of vis) sizeNode(n, n === R ? 0 : Math.min(n.depth - R.depth, 2));
+  if (layoutName === 'radial') return radial(R, vis);
+  R.x = -R.w / 2; R.y = 0;
+  if (layoutName === 'tree' || R.c.length < 3) {
+    R.c.forEach(subH); const H = R.c.reduce((a, k) => a + k.sh, 0) + GY * 2 * Math.max(0, R.c.length - 1); let y = -H / 2;
+    for (const k of R.c) { placeTree(k, R.x + R.w + GX + 24, y, 1); k.dir = 1; y += k.sh + GY * 2 }
+    for (const n of vis) n.dir = 1; return;
+  }
+  const right = [], left = []; R.c.forEach((k, i) => (i < Math.ceil(R.c.length / 2) ? right : left).push(k));
+  const col = (list, dir) => { list.forEach(subH); const H = list.reduce((a, k) => a + k.sh, 0) + GY * 2 * Math.max(0, list.length - 1); let y = -H / 2; for (const k of list) { placeTree(k, dir > 0 ? R.x + R.w + GX + 24 : R.x - GX - 24, y, dir); y += k.sh + GY * 2 } };
+  col(right, 1); col(left, -1);
+  const mark = (n, d) => { n.dir = d; for (const k of n.c) mark(k, d) }; right.forEach((k) => mark(k, 1)); left.forEach((k) => mark(k, -1)); R.dir = 0;
+}
+function radial(R, vis) {
+  const leaves = (n) => { const kids = (n.open || n === R) ? n.c : []; n.lv = kids.length ? kids.reduce((a, k) => a + leaves(k), 0) : 1; return n.lv };
+  leaves(R); R.x = -R.w / 2; R.y = 0; R.dir = 0;
+  const total = R.lv; const r1 = Math.max(250, 46 * R.c.length);
+  const step = Math.max(200, Math.min(320, total * 7));
+  const put = (n, a0, a1, ring) => {
+    const kids = (n.open || n === R) ? n.c : []; let a = a0;
+    for (const k of kids) {
+      const span = (a1 - a0) * k.lv / Math.max(1, n === R ? total : n.lv); const mid = a + span / 2;
+      const rad = r1 + (ring - 1) * step; const cx = Math.cos(mid) * rad, cy = Math.sin(mid) * rad;
+      k.dir = Math.cos(mid) >= 0 ? 1 : -1; k.ang = mid; k.x = cx - k.w / 2; k.y = cy; put(k, a, a + span, ring + 1); a += span;
+    }
+  };
+  put(R, -Math.PI / 2, Math.PI * 1.5, 1);
+}
+
+// ───────── отрисовка ─────────
+const el = (tag, attrs, parent) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); parent && parent.appendChild(e); return e };
+const nodeEls = new Map(); let anim = null, hoverKey = null, selKey = null, foundKeys = new Set();
+function anchor(n, toward) {
+  if (layoutName === 'radial') return { x: n.x + n.w / 2, y: n.y };
+  if (n === focusRoot()) return { x: toward > 0 ? n.x + n.w : n.x, y: n.y };
+  return { x: toward > 0 ? n.x + n.w : n.x, y: n.y };
+}
+function linkPath(p, k) {
+  if (layoutName === 'radial') { const a = { x: p.ax + p.w / 2, y: p.ay }, b = { x: k.ax + k.w / 2, y: k.ay }; const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2; const c1 = p === focusRoot() ? { x: a.x * 0.5 + mx * 0.5, y: a.y * 0.5 + my * 0.5 } : { x: mx, y: a.y }; return `M${a.x},${a.y} Q${c1.x},${c1.y} ${b.x},${b.y}` }
+  const d = k.dir || 1; const sx = d > 0 ? p.ax + p.w : p.ax, ex = d > 0 ? k.ax : k.ax + k.w; const mx = sx + (ex - sx) * 0.5;
+  return `M${sx},${p.ay} C${mx},${p.ay} ${mx},${k.ay} ${ex},${k.ay}`;
+}
+function render(animate = true) {
+  layout(); const R = focusRoot(); const vis = visibleFrom(R); const visSet = new Set(vis);
+  // узлы: переиспользуем элементы для плавного перехода
+  for (const [k, g] of nodeEls) if (!visSet.has(byKey.get(k))) { g.remove(); nodeEls.delete(k) }
+  gLinks.textContent = '';
+  for (const n of vis) {
+    let g = nodeEls.get(n.key);
+    const vd = n.vd;
+    if (!g || g.dataset.v !== stamp(n)) {
+      if (g) g.remove();
+      g = drawNode(n, vd); nodeEls.set(n.key, g);
+      const p = n.parent && visSet.has(n.parent) ? n.parent : null;
+      if (n.ax === undefined || !animate) { n.ax = p && p.ax !== undefined && animate ? p.ax + (p.w - n.w) / 2 : n.x; n.ay = p && p.ay !== undefined && animate ? p.ay : n.y }
+    }
+    gNodes.appendChild(g);
+  }
+  for (const n of vis) for (const k of ((n.open || n === R) ? n.c : [])) {
+    const vd = Math.min(k.depth - R.depth, 3);
+    el('path', { class: 'link', 'data-k': k.key, stroke: cssv(k.color), 'stroke-width': vd === 1 ? 3.2 : vd === 2 ? 2 : 1.4, 'stroke-opacity': vd === 1 ? 0.95 : 0.6 }, gLinks);
+  }
+  tween(animate && !reduce);
+  applyDim(); drawMini(); updateCrumbs();
+}
+function stamp(n) { return [n.t, n.vd, n.open ? 1 : 0, n.c.length, n.star ? 1 : 0, n.done ? 1 : 0, n.color, layoutName, focusRoot().key, selKey === n.key ? 1 : 0, themeStamp].join('|') }
+let themeStamp = 0;
+function drawNode(n, vd) {
+  const g = el('g', { class: 'node d' + vd + (selKey === n.key ? ' sel' : ''), tabindex: 0, role: 'button', 'aria-label': n.t + (n.c.length ? `, ${n.c.length} пунктов` : '') });
+  g.dataset.k = n.key; g.dataset.v = stamp(n);
+  const c = cssv(n.color);
+  if (vd === 0) {
+    el('rect', { x: -6, y: -6, width: n.w + 12, height: n.h + 12, rx: 22, fill: 'url(#rootGrad)', opacity: 0.45, filter: 'url(#glow)' }, g);
+    el('rect', { class: 'bgr', width: n.w, height: n.h, rx: 18, fill: 'url(#rootGrad)', stroke: 'rgba(255,255,255,0.35)', 'stroke-width': 1 }, g);
+  } else if (vd === 1) {
+    el('rect', { class: 'bgr', width: n.w, height: n.h, rx: 13, fill: cssv('--solid'), stroke: c, 'stroke-width': 1.8, filter: 'url(#soft)' }, g);
+    el('rect', { width: n.w, height: n.h, rx: 13, fill: c, 'fill-opacity': 0.13, 'pointer-events': 'none' }, g);
+  } else {
+    el('rect', { class: 'bgr', width: n.w, height: n.h, rx: 9, fill: cssv('--solid'), stroke: c, 'stroke-opacity': 0.5, 'stroke-width': 1.2 }, g);
+    el('circle', { cx: 10, cy: n.h / 2, r: 2.6, fill: c }, g);
+  }
+  let x = vd === 0 ? 24 : vd === 1 ? 13 : 19;
+  if (vd <= 1 && (n.i || vd === 0)) {
+    const ig = el('g', { transform: `translate(${x},${n.h / 2 - 9}) scale(0.75)`, fill: 'none', stroke: vd === 0 ? '#fff' : c, 'stroke-width': 2.2, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, g);
+    el('path', { d: ICONS[n.i || 'spark'] || ICONS.spark }, ig); x += 26;
+  }
+  const t = el('text', { class: 'lbl', x, y: n.h / 2 + (vd === 0 ? 6.5 : 4.8), fill: vd === 0 ? '#FFFFFF' : cssv('--nodeText') }, g);
+  t.textContent = clip(n, vd);
+  if (n.done) { el('path', { d: `M${n.w - (n.c.length && vd ? 46 : 22)},${n.h / 2} l3,3 l6,-7`, stroke: cssv('--b6'), 'stroke-width': 2.2, fill: 'none', 'stroke-linecap': 'round' }, g) }
+  if (n.star) { const sx = n.w - (n.c.length && vd ? 46 : 22) - (n.done ? 16 : 0); el('path', { d: `M${sx + 4},${n.h / 2 - 6} l1.8,3.8 4.1,.5 -3,2.8 .8,4.1 -3.7,-2 -3.7,2 .8,-4.1 -3,-2.8 4.1,-.5z`, fill: cssv('--b7') }, g) }
+  if (n.c.length && vd > 0) {
+    const bx = n.w - 22; el('rect', { x: bx - 2, y: n.h / 2 - 9, width: 20, height: 18, rx: 9, fill: c, 'fill-opacity': n.open ? 0.12 : 0.9 }, g);
+    const m = el('text', { x: bx + 8, y: n.h / 2 + 4, 'text-anchor': 'middle', 'font-size': 11, 'font-weight': 800, 'font-family': 'Manrope, sans-serif', fill: n.open ? c : '#fff' }, g); m.textContent = n.open ? '−' : n.c.length;
+  }
+  if (n.d && vd > 0) el('circle', { cx: n.w - 4, cy: 4, r: 3, fill: c }, g);
+  g.addEventListener('pointerenter', () => { hoverKey = n.key; applyDim() });
+  g.addEventListener('pointerleave', () => { if (hoverKey === n.key) { hoverKey = null; applyDim() } });
+  g.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); clickNode(n) } });
+  return g;
+}
+function clip(n, vd) { let s = n.t; while (s.length > 3 && measure(s, vd) > n.tw + 0.5) s = s.slice(0, -1); return s === n.t ? s : s.trimEnd() + '…' }
+function tween(on) {
+  cancelAnimationFrame(anim); const vis = visibleFrom(focusRoot()); const from = vis.map((n) => [n.ax ?? n.x, n.ay ?? n.y]); const t0 = performance.now(), D = on && !document.hidden ? 420 : 0;
+  const step = (t) => {
+    const p = D ? Math.min(1, (t - t0) / D) : 1; const e = 1 - Math.pow(1 - p, 3);
+    vis.forEach((n, i) => { n.ax = from[i][0] + (n.x - from[i][0]) * e; n.ay = from[i][1] + (n.y - from[i][1]) * e; const g = nodeEls.get(n.key); g && g.setAttribute('transform', `translate(${n.ax},${n.ay - n.h / 2})`) });
+    for (const pth of gLinks.children) { const k = byKey.get(pth.dataset.k); if (k && k.parent) pth.setAttribute('d', linkPath(k.parent, k)) }
+    if (p < 1) anim = requestAnimationFrame(step); else drawMini();
+  };
+  step(performance.now());
+}
+function lineage(key) { const s = new Set(); let n = byKey.get(key); while (n) { s.add(n.key); n = n.parent } const add = (m) => { s.add(m.key); m.c.forEach(add) }; const h = byKey.get(key); h && h.c.forEach(add); return s }
+let presentSet = null;
+function applyDim() {
+  const keep = presentSet || (hoverKey ? lineage(hoverKey) : null);
+  for (const [k, g] of nodeEls) { g.classList.toggle('dim', !!keep && !keep.has(k)); g.classList.toggle('found', foundKeys.has(k)) }
+  for (const p of gLinks.children) p.classList.toggle('dim', !!keep && !keep.has(p.dataset.k));
+}
+
+// ───────── камера ─────────
+let view = { x: 0, y: 0, k: 1 }, camAnim = null;
+function applyView() { cam.setAttribute('transform', `translate(${view.x},${view.y}) scale(${view.k})`); $('zv').textContent = Math.round(view.k * 100) + '%'; drawMini() }
+function bbox(nodes) { let a = Infinity, b = Infinity, c = -Infinity, d = -Infinity; for (const n of nodes) { a = Math.min(a, n.x); c = Math.max(c, n.x + n.w); b = Math.min(b, n.y - n.h / 2); d = Math.max(d, n.y + n.h / 2) } return { x0: a, y0: b, x1: c, y1: d } }
+function flyTo(bb, maxK = 1.3, instant = false) {
+  const W = stage.clientWidth, H = stage.clientHeight; const padT = 70, padB = 40, padX = W < 720 ? 20 : 70;
+  const k = Math.max(0.15, Math.min(maxK, (W - padX * 2) / Math.max(1, bb.x1 - bb.x0), (H - padT - padB) / Math.max(1, bb.y1 - bb.y0)));
+  const to = { k, x: W / 2 - k * (bb.x0 + bb.x1) / 2, y: padT + (H - padT - padB) / 2 - k * (bb.y0 + bb.y1) / 2 };
+  cancelAnimationFrame(camAnim); if (instant || reduce || document.hidden) { view = to; applyView(); return }
+  const from = { ...view }, t0 = performance.now();
+  const step = (t) => { const p = Math.min(1, (t - t0) / 520), e = p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2; view = { k: from.k + (to.k - from.k) * e, x: from.x + (to.x - from.x) * e, y: from.y + (to.y - from.y) * e }; applyView(); if (p < 1) camAnim = requestAnimationFrame(step) };
+  camAnim = requestAnimationFrame(step);
+}
+function fit(instant) { flyTo(bbox(visibleFrom(focusRoot())), 1.2, instant) }
+function zoomAt(f, cx = stage.clientWidth / 2, cy = stage.clientHeight / 2) { cancelAnimationFrame(camAnim); const k = Math.max(0.1, Math.min(4, view.k * f)); view.x = cx - (cx - view.x) * k / view.k; view.y = cy - (cy - view.y) * k / view.k; view.k = k; applyView() }
+const toWorld = (cx, cy) => { const r = stage.getBoundingClientRect(); return { x: (cx - r.left - view.x) / view.k, y: (cy - r.top - view.y) / view.k } };
+
+// ───────── мини-карта ─────────
+let miniBox = null;
+function drawMini() {
+  const c = $('miniC'), x = c.getContext('2d'); const W = c.width, H = c.height; x.clearRect(0, 0, W, H);
+  const vis = visibleFrom(focusRoot()); if (!vis.length) return; const bb = bbox(vis); const pad = 30;
+  const s = Math.min((W - 20) / (bb.x1 - bb.x0 + pad * 2), (H - 20) / (bb.y1 - bb.y0 + pad * 2)); const ox = W / 2 - s * (bb.x0 + bb.x1) / 2, oy = H / 2 - s * (bb.y0 + bb.y1) / 2;
+  miniBox = { s, ox, oy };
+  for (const n of vis) { x.fillStyle = n === focusRoot() ? cssv('--accent') : cssv(n.color); x.globalAlpha = n.vd <= 1 ? 0.95 : 0.55; x.fillRect(ox + n.ax * s, oy + (n.ay - n.h / 2) * s, Math.max(2, n.w * s), Math.max(2, n.h * s)) }
+  x.globalAlpha = 1; const vx = (-view.x / view.k) * s + ox, vy = (-view.y / view.k) * s + oy, vw = stage.clientWidth / view.k * s, vh = stage.clientHeight / view.k * s;
+  x.strokeStyle = cssv('--ink'); x.lineWidth = 2; x.strokeRect(vx, vy, vw, vh);
+}
+$('mini').addEventListener('click', (e) => { if (!miniBox) return; const r = e.currentTarget.getBoundingClientRect(); const c = $('miniC'); const mx = (e.clientX - r.left) * c.width / r.width, my = (e.clientY - r.top) * c.height / r.height; const wx = (mx - miniBox.ox) / miniBox.s, wy = (my - miniBox.oy) / miniBox.s; view.x = stage.clientWidth / 2 - wx * view.k; view.y = stage.clientHeight / 2 - wy * view.k; applyView() });
+
+// ───────── действия с пунктами ─────────
+function clickNode(n) {
+  if (n.c.length && n !== focusRoot()) { n.open = !n.open; render() }
+  select(n.key);
+}
+function select(key) {
+  selKey = key; const n = byKey.get(key); try { history.replaceState(null, '', key ? '#' + key : location.pathname + location.search) } catch (e) {}
+  render(); showSide(n);
+}
+function pathOf(n) { const a = []; let m = n; while (m) { a.unshift(m); m = m.parent } return a }
+function showSide(n) {
+  const s = $('side'); if (!n) { s.hidden = true; return }
+  s.hidden = false; s.textContent = '';
+  const x = document.createElement('button'); x.className = 'x'; x.type = 'button'; x.setAttribute('aria-label', 'Закрыть'); x.textContent = '×'; x.onclick = () => { selKey = null; s.hidden = true; render(false) }; s.appendChild(x);
+  const path = document.createElement('div'); path.className = 'path'; path.textContent = pathOf(n).slice(0, -1).map((m) => m.t).join(' › ') || 'Центр карты'; s.appendChild(path);
+  const h = document.createElement('h3'); h.textContent = n.t; h.style.color = n.depth ? cssv(n.color) : ''; s.appendChild(h);
+  if (n.d) { const p = document.createElement('p'); p.textContent = n.d; s.appendChild(p) }
+  if (n.c.length) { const k = document.createElement('div'); k.className = 'kids'; for (const c of n.c) { const b = document.createElement('button'); b.className = 'chip'; b.type = 'button'; b.textContent = c.t; b.onclick = () => { n.open = true; select(c.key); flyTo(bbox([c, ...c.c.filter(() => c.open)]), 1.1) }; k.appendChild(b) } s.appendChild(k) }
+  const row = document.createElement('div'); row.className = 'row';
+  const mk = (label, fn, title) => { const b = document.createElement('button'); b.className = 'btn glass'; b.type = 'button'; b.textContent = label; if (title) b.title = title; b.onclick = fn; row.appendChild(b); return b };
+  if (n.c.length && n !== focusRoot()) mk('Фокус на ветке', () => setFocus(n));
+  if (focusNode) mk('Вся карта', () => setFocus(null));
+  mk('Копировать ссылку', () => copy(location.href.split('#')[0] + '#' + n.key));
+  s.appendChild(row);
+  if (MODE === 'owner' && canWrite) ownerTools(n, s);
+}
+function ownerTools(n, s) {
+  const wrap = document.createElement('div'); wrap.style.cssText = 'display:grid;gap:8px;border-top:1px solid var(--line);padding-top:10px';
+  const lab = document.createElement('label'); lab.textContent = 'Название'; lab.style.cssText = 'font-size:12px;color:var(--muted)'; lab.htmlFor = 'eT';
+  const t = document.createElement('input'); t.type = 'text'; t.id = 'eT'; t.value = n.t;
+  const lab2 = document.createElement('label'); lab2.textContent = 'Пояснение'; lab2.style.cssText = lab.style.cssText; lab2.htmlFor = 'eD';
+  const d = document.createElement('textarea'); d.id = 'eD'; d.rows = 3; d.value = n.d || '';
+  const save = () => { const o = { ...(over.get(n.key) || {}) }; if (t.value.trim() && t.value.trim() !== n.t) o.t = t.value.trim(); if (d.value !== (n.d || '')) o.d = d.value; putNode(n.key, o, over.get(n.key)) };
+  t.addEventListener('change', save); d.addEventListener('change', save);
+  const colors = document.createElement('div'); colors.className = 'colors';
+  if (n.depth) for (const c of COLORS) { const b = document.createElement('button'); b.type = 'button'; b.className = 'sw' + (n.color === c ? ' on' : ''); b.style.background = `var(${c})`; b.setAttribute('aria-label', 'Цвет ветки'); b.onclick = () => putNode(n.key, { ...(over.get(n.key) || {}), color: c }, over.get(n.key)); colors.appendChild(b) }
+  const row = document.createElement('div'); row.className = 'row';
+  const mk = (label, fn) => { const b = document.createElement('button'); b.className = 'btn glass'; b.type = 'button'; b.textContent = label; b.onclick = fn; row.appendChild(b) };
+  mk('+ Пункт внутри', () => { const k = 'u' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); n.open = true; putNode(k, { added: true, parent: n.key, t: 'Новый пункт', order: Date.now() }, undefined, () => select(k)) });
+  mk(n.star ? '★ Убрать звезду' : '☆ Звезда', () => putNode(n.key, { ...(over.get(n.key) || {}), star: !n.star }, over.get(n.key)));
+  mk(n.done ? 'Не готово' : '✓ Готово', () => putNode(n.key, { ...(over.get(n.key) || {}), done: !n.done }, over.get(n.key)));
+  if (n.depth) mk('Скрыть пункт', () => { putNode(n.key, { ...(over.get(n.key) || {}), hidden: true }, over.get(n.key)); selKey = null; $('side').hidden = true });
+  wrap.append(lab, t, lab2, d, colors, row); s.appendChild(wrap);
+}
+function setFocus(n) { focusNode = n && n !== ROOT ? n : null; if (focusNode) focusNode.open = true; for (const m of byKey.values()) { m.ax = undefined } render(false); fit() }
+function updateCrumbs() {
+  const c = $('crumbs'); if (!focusNode) { c.hidden = true; return } c.hidden = false; c.textContent = '';
+  pathOf(focusNode).forEach((m, i, a) => { const b = document.createElement('button'); b.className = 'btn' + (i === a.length - 1 ? ' on' : ''); b.type = 'button'; b.textContent = m.t; b.onclick = () => setFocus(m === ROOT ? null : m); c.appendChild(b); if (i < a.length - 1) { const s = document.createElement('span'); s.textContent = '›'; s.style.color = 'var(--muted)'; c.appendChild(s) } });
+}
+function copy(text) { const done = () => toast('Ссылка скопирована'); try { navigator.clipboard.writeText(text).then(done, () => toast(text)) } catch (e) { toast(text) } }
+let toastT; function toast(msg) { let t = document.querySelector('.toast'); if (!t) { t = document.createElement('div'); t.className = 'toast glass'; stage.appendChild(t) } t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true }, 2600) }
+
+// ───────── поиск ─────────
+let foundList = [], foundIdx = -1;
+$('q').addEventListener('input', () => {
+  const q = $('q').value.trim().toLowerCase(); foundKeys = new Set(); foundList = []; foundIdx = -1;
+  if (q.length >= 2) for (const n of byKey.values()) if ((n.t + ' ' + (n.d || '')).toLowerCase().includes(q)) { foundList.push(n); foundKeys.add(n.key); let p = n.parent; while (p) { p.open = true; p = p.parent } }
+  if (focusNode && foundList.some((n) => !pathOf(n).includes(focusNode))) focusNode = null;
+  render(); status(q.length >= 2 ? (foundList.length ? `Найдено: ${foundList.length}. Enter — к следующему` : 'Ничего не найдено') : '');
+  if (foundList.length) setTimeout(() => flyTo(bbox(foundList), 1.1), 30);
+});
+$('q').addEventListener('keydown', (e) => { if (e.key === 'Enter' && foundList.length) { foundIdx = (foundIdx + 1) % foundList.length; const n = foundList[foundIdx]; select(n.key); flyTo(bbox([n]), 1.4) } if (e.key === 'Escape') { $('q').value = ''; $('q').dispatchEvent(new Event('input')); $('q').blur() } });
+function status(t) { $('status').textContent = t }
+
+// ───────── вид, глубина, режимы ─────────
+document.querySelectorAll('[data-layout]').forEach((b) => b.addEventListener('click', () => setLayout(b.dataset.layout)));
+function setLayout(name) { layoutName = name; document.querySelectorAll('[data-layout]').forEach((x) => x.classList.toggle('on', x.dataset.layout === name)); try { localStorage.setItem('mm-layout', name) } catch (e) {} render(); setTimeout(fit, 40) }
+document.querySelectorAll('[data-depth]').forEach((b) => b.addEventListener('click', () => { const d = +b.dataset.depth; for (const n of byKey.values()) n.open = n.depth < d; render(); setTimeout(fit, 40) }));
+$('bFit').onclick = () => fit(); $('bIn').onclick = () => zoomAt(1.2); $('bOut').onclick = () => zoomAt(1 / 1.2);
+$('bZen').onclick = toggleZen;
+$('bDraw').onclick = () => { const on = stage.classList.toggle('drawing'); $('bDraw').classList.toggle('on', on); if (!on) setTool('hand') };
+function toggleZen() { const on = !stage.classList.contains('zen'); stage.classList.toggle('zen', on); try { if (on && stage.requestFullscreen) stage.requestFullscreen().catch(() => {}); else if (!on && document.fullscreenElement) document.exitFullscreen().catch(() => {}) } catch (e) {} setTimeout(fit, 80) }
+document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement && stage.classList.contains('zen')) { stage.classList.remove('zen'); setTimeout(fit, 80) } });
+$('bTheme').onclick = () => { const r = document.documentElement; const dark = r.dataset.theme ? r.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches; r.dataset.theme = dark ? 'light' : 'dark'; try { localStorage.setItem('mm-theme', r.dataset.theme) } catch (e) {} };
+const reTheme = () => { themeStamp++; render(false); redrawInk() };
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', reTheme);
+new MutationObserver(reTheme).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+$('bHelp').onclick = () => { $('help').hidden = false; $('helpOk').focus() }; $('helpOk').onclick = () => { $('help').hidden = true };
+$('help').addEventListener('click', (e) => { if (e.target.id === 'help') $('help').hidden = true });
+
+// презентация
+let pIdx = -1, pSaved = null;
+$('bPresent').onclick = () => startPresent();
+function startPresent() { pSaved = { layout: layoutName, focus: focusNode }; focusNode = null; pIdx = -1; $('presentBar').hidden = false; for (const n of byKey.values()) n.open = n.depth < 1; stepPresent(0) }
+function stepPresent(i) {
+  const list = ROOT.c; pIdx = Math.max(-1, Math.min(list.length - 1, i)); $('pNum').textContent = pIdx < 0 ? 'Обзор' : `${pIdx + 1} / ${list.length}`;
+  for (const n of byKey.values()) n.open = n.depth < 1;
+  if (pIdx < 0) { presentSet = null; render(); setTimeout(fit, 40); return }
+  const b = list[pIdx]; const openAll = (n) => { n.open = true; n.c.forEach((k) => { if (k.depth < 3) openAll(k) }) }; openAll(b);
+  presentSet = lineage(b.key); render(); setTimeout(() => flyTo(bbox(visibleFrom(ROOT).filter((n) => presentSet.has(n.key))), 1.15), 40); select(b.key);
+}
+function stopPresent() { $('presentBar').hidden = true; presentSet = null; pIdx = -1; if (pSaved) { focusNode = pSaved.focus } render(); setTimeout(fit, 40) }
+$('pPrev').onclick = () => stepPresent(pIdx - 1); $('pNext').onclick = () => stepPresent(pIdx + 1); $('pExit').onclick = stopPresent;
+
+// ───────── рисование ─────────
+const INK = ['#F43F5E', '#F59E0B', '#22C55E', '#3B82F6', '#A855F7', '__ink__'];
+const TOOLS = [
+  ['hand', 'Рука — двигать карту и рисунки (V)', 'M7 11V6a1.5 1.5 0 0 1 3 0v5M10 10V4.5a1.5 1.5 0 0 1 3 0V10M13 10V5.5a1.5 1.5 0 0 1 3 0V11M16 9.5a1.5 1.5 0 0 1 3 0V14a7 7 0 0 1-7 7h-1a6 6 0 0 1-5-2.7L4 15a1.5 1.5 0 0 1 2.4-1.8L7 14'],
+  ['pen', 'Ручка (B)', 'M4 20l4-1 11-11-3-3L5 16zM14 6l3 3'],
+  ['marker', 'Маркер (M)', 'M5 19h6M9 15l-3-3 9-9 3 3zM6 12l-2 5 5-2'],
+  ['rect', 'Прямоугольник (R)', 'M4 6h16v12H4z'],
+  ['ellipse', 'Овал (O)', 'M12 18c4.4 0 8-2.7 8-6s-3.6-6-8-6-8 2.7-8 6 3.6 6 8 6z'],
+  ['arrow', 'Стрелка (A)', 'M5 19L19 5M10 5h9v9'],
+  ['line', 'Линия (L)', 'M5 19L19 5'],
+  ['text', 'Текст (T)', 'M5 6V4h14v2M12 4v16M9 20h6'],
+  ['sticky', 'Стикер (S)', 'M4 4h16v10l-6 6H4zM14 20v-6h6'],
+  ['eraser', 'Ластик (E)', 'M8 20h12M5 15l9-9 5 5-8 8H8z'],
+  ['laser', 'Лазерная указка (X)', 'M12 12m-3 0a3 3 0 1 0 6 0 3 3 0 1 0-6 0M12 3v3M12 18v3M3 12h3M18 12h3'],
+];
+let tool = 'hand', inkColor = INK[0], inkSize = 3;
+const marks = new Map(); const markEls = new Map();
+let canWrite = true; let canDraw = true;
+function buildTools() {
+  const t = $('tools'); t.textContent = '';
+  for (const [id, title, d] of TOOLS) { const b = document.createElement('button'); b.className = 'tool' + (tool === id ? ' on' : ''); b.type = 'button'; b.title = title; b.setAttribute('aria-label', title); b.innerHTML = `<svg viewBox="0 0 24 24"><path d="${d}"/></svg>`; if (id !== 'hand' && id !== 'laser' && !canDraw) b.disabled = true; b.onclick = () => setTool(id); t.appendChild(b) }
+  const s1 = document.createElement('div'); s1.className = 'sep'; t.appendChild(s1);
+  const sw = document.createElement('div'); sw.className = 'swatches';
+  for (const c of INK) { const b = document.createElement('button'); b.type = 'button'; b.className = 'sw' + (inkColor === c ? ' on' : ''); b.style.background = c === '__ink__' ? 'var(--ink)' : c; b.setAttribute('aria-label', 'Цвет'); b.onclick = () => { inkColor = c; buildTools() }; sw.appendChild(b) }
+  t.appendChild(sw);
+  const sz = document.createElement('div'); sz.className = 'sizes';
+  for (const v of [2, 4, 8]) { const b = document.createElement('button'); b.type = 'button'; b.className = 'sz' + (inkSize === v ? ' on' : ''); b.setAttribute('aria-label', 'Толщина ' + v); b.innerHTML = `<i style="width:18px;height:${Math.max(2, v)}px"></i>`; b.onclick = () => { inkSize = v; buildTools() }; sz.appendChild(b) }
+  t.appendChild(sz);
+  const s2 = document.createElement('div'); s2.className = 'sep'; t.appendChild(s2);
+  const mk = (title, d, fn) => { const b = document.createElement('button'); b.className = 'tool'; b.type = 'button'; b.title = title; b.setAttribute('aria-label', title); b.innerHTML = `<svg viewBox="0 0 24 24"><path d="${d}"/></svg>`; b.onclick = fn; if (!canDraw) b.disabled = true; t.appendChild(b) };
+  mk('Отменить (Ctrl+Z)', 'M9 14L4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3', undo);
+  mk('Вернуть (Ctrl+Y)', 'M15 14l5-5-5-5M20 9H10a6 6 0 0 0 0 12h3', redo);
+  mk('Стереть все мои рисунки', 'M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3', clearMine);
+}
+function setTool(id) { tool = id; stage.dataset.tool = id; buildTools(); if (id !== 'laser') laserDot.hidden = true }
+const colorOf = (c) => c === '__ink__' ? cssv('--ink') : c;
+function smooth(pts) { if (pts.length < 2) return `M${pts[0][0]},${pts[0][1]} l0.01,0`; let d = `M${pts[0][0]},${pts[0][1]}`; for (let i = 1; i < pts.length - 1; i++) { const mx = (pts[i][0] + pts[i + 1][0]) / 2, my = (pts[i][1] + pts[i + 1][1]) / 2; d += ` Q${pts[i][0]},${pts[i][1]} ${mx},${my}` } const l = pts[pts.length - 1]; return d + ` L${l[0]},${l[1]}` }
+function arrowHead(x1, y1, x2, y2, w) { const a = Math.atan2(y2 - y1, x2 - x1), L = 10 + w * 2.2; return `M${x2 - L * Math.cos(a - 0.45)},${y2 - L * Math.sin(a - 0.45)} L${x2},${y2} L${x2 - L * Math.cos(a + 0.45)},${y2 - L * Math.sin(a + 0.45)}` }
+function drawMark(m, parent = gInk) {
+  const g = el('g', { class: 'mark' + (m.mine !== false ? ' mine' : ''), 'data-id': m.id }, parent); const c = colorOf(m.c); const w = m.w || 3;
+  if (m.type === 'pen' || m.type === 'marker') el('path', { d: smooth(m.p), fill: 'none', stroke: c, 'stroke-width': w, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-opacity': m.type === 'marker' ? 0.35 : 1 }, g);
+  else if (m.type === 'rect') el('rect', { x: Math.min(m.x1, m.x2), y: Math.min(m.y1, m.y2), width: Math.abs(m.x2 - m.x1), height: Math.abs(m.y2 - m.y1), rx: 8, fill: c, 'fill-opacity': 0.06, stroke: c, 'stroke-width': w }, g);
+  else if (m.type === 'ellipse') el('ellipse', { cx: (m.x1 + m.x2) / 2, cy: (m.y1 + m.y2) / 2, rx: Math.abs(m.x2 - m.x1) / 2, ry: Math.abs(m.y2 - m.y1) / 2, fill: c, 'fill-opacity': 0.06, stroke: c, 'stroke-width': w }, g);
+  else if (m.type === 'line' || m.type === 'arrow') { el('path', { d: `M${m.x1},${m.y1} L${m.x2},${m.y2}`, stroke: c, 'stroke-width': w, 'stroke-linecap': 'round', fill: 'none' }, g); if (m.type === 'arrow') el('path', { d: arrowHead(m.x1, m.y1, m.x2, m.y2, w), stroke: c, 'stroke-width': w, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', fill: 'none' }, g) }
+  else if (m.type === 'text') { const lines = String(m.text || '').split('\n'); const t = el('text', { x: m.x, y: m.y, fill: c, 'font-family': 'Manrope, sans-serif', 'font-weight': 700, 'font-size': m.fs || 18 }, g); lines.forEach((ln, i) => { const s = el('tspan', { x: m.x, dy: i ? (m.fs || 18) * 1.3 : 0 }, t); s.textContent = ln }) }
+  else if (m.type === 'sticky') {
+    const W = m.wd || 190, lines = wrapText(String(m.text || ''), W - 24, 14); const H = Math.max(110, 34 + lines.length * 19);
+    el('rect', { x: m.x + 3, y: m.y + 5, width: W, height: H, rx: 4, fill: '#000', opacity: 0.12 }, g);
+    el('rect', { x: m.x, y: m.y, width: W, height: H, rx: 4, fill: m.c === '__ink__' ? '#FDE68A' : m.c, 'fill-opacity': 1 }, g);
+    el('rect', { x: m.x, y: m.y, width: W, height: H, rx: 4, fill: '#fff', 'fill-opacity': 0.55 }, g);
+    const t = el('text', { x: m.x + 12, y: m.y + 26, fill: '#1A1A1A', 'font-family': 'Manrope, sans-serif', 'font-weight': 600, 'font-size': 14 }, g);
+    lines.forEach((ln, i) => { const s = el('tspan', { x: m.x + 12, dy: i ? 19 : 0 }, t); s.textContent = ln });
+  }
+  return g;
+}
+function wrapText(s, W, fs) { cv.font = `600 ${fs}px Manrope, sans-serif`; const out = []; for (const para of s.split('\n')) { let line = ''; for (const w of para.split(' ')) { const t = line ? line + ' ' + w : w; if (cv.measureText(t).width > W && line) { out.push(line); line = w } else line = t } out.push(line) } return out }
+function redrawInk() { gInk.textContent = ''; markEls.clear(); [...marks.values()].sort((a, b) => (a.ts || 0) - (b.ts || 0)).forEach((m) => markEls.set(m.id, drawMark(m))) }
+const newId = () => 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+
+// история
+const undoStack = [], redoStack = [];
+function doOp(op, record = true) {
+  if (op.kind === 'add') { marks.set(op.m.id, op.m); saveMark(op.m) }
+  if (op.kind === 'del') { marks.delete(op.m.id); deleteMark(op.m.id) }
+  if (op.kind === 'move') { marks.set(op.to.id, op.to); saveMark(op.to) }
+  if (op.kind === 'node') { applyNode(op.key, op.to); }
+  if (record) { undoStack.push(op); redoStack.length = 0 }
+  redrawInk();
+}
+const inverse = (op) => op.kind === 'add' ? { kind: 'del', m: op.m } : op.kind === 'del' ? { kind: 'add', m: op.m } : op.kind === 'move' ? { kind: 'move', from: op.to, to: op.from } : { kind: 'node', key: op.key, from: op.to, to: op.from };
+function undo() { const op = undoStack.pop(); if (!op) return; doOp(inverse(op), false); redoStack.push(op) }
+function redo() { const op = redoStack.pop(); if (!op) return; doOp(op, false); undoStack.push(op) }
+function clearMine() { const mine = [...marks.values()].filter((m) => m.mine !== false); if (!mine.length) return; for (const m of mine) doOp({ kind: 'del', m }); toast('Рисунки стёрты. Ctrl+Z — вернуть') }
+
+// указатель
+let drag = null; const pts = new Map(); let pinch = 0;
+const laserDot = document.createElement('div'); laserDot.className = 'laserdot'; laserDot.hidden = true; stage.appendChild(laserDot);
+stage.addEventListener('pointerdown', (e) => {
+  if (e.target.closest('.topbar,.tools,.side,.zoomer,.minimap,.crumbs,.present,.help,.textedit')) return;
+  pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pts.size === 2) { drag = { kind: 'pan', x: e.clientX, y: e.clientY }; pinch = 0; gTemp.textContent = ''; return }
+  try { stage.setPointerCapture(e.pointerId) } catch (err) {}
+  const w = toWorld(e.clientX, e.clientY); const nodeG = e.target.closest('.node'); const markG = e.target.closest('.mark');
+  if (tool === 'hand' || (!canDraw && tool !== 'laser')) {
+    if (markG && canDraw && marks.get(markG.dataset.id)?.mine !== false) { const m = marks.get(markG.dataset.id); drag = { kind: 'moveMark', m, sx: w.x, sy: w.y, moved: false }; return }
+    drag = { kind: 'pan', x: e.clientX, y: e.clientY, node: nodeG ? nodeG.dataset.k : null, moved: false, t: performance.now() }; stage.classList.add('panning'); return;
+  }
+  if (tool === 'laser') { drag = { kind: 'laser', trail: [] }; return }
+  if (tool === 'eraser') { drag = { kind: 'erase' }; eraseAt(e); return }
+  if (tool === 'text' || tool === 'sticky') { e.preventDefault(); openTextEditor(e.clientX, e.clientY, w, tool); return }
+  const m = { id: newId(), type: tool, c: inkColor, w: (tool === 'marker' ? inkSize * 5 : inkSize) / Math.max(0.5, view.k), ts: Date.now() };
+  if (tool === 'pen' || tool === 'marker') m.p = [[r1(w.x), r1(w.y)]]; else { m.x1 = m.x2 = r1(w.x); m.y1 = m.y2 = r1(w.y) }
+  drag = { kind: 'draw', m };
+});
+const r1 = (v) => Math.round(v * 10) / 10;
+window.addEventListener('pointermove', (e) => {
+  if (tool === 'laser') { const r = stage.getBoundingClientRect(); const inside = e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom; laserDot.hidden = !inside; laserDot.style.left = (e.clientX - r.left) + 'px'; laserDot.style.top = (e.clientY - r.top) + 'px' }
+  if (!pts.has(e.pointerId) || !drag) return; pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pts.size === 2) { const [a, b] = [...pts.values()]; const d = Math.hypot(a.x - b.x, a.y - b.y); const r = stage.getBoundingClientRect(); if (pinch) zoomAt(d / pinch, (a.x + b.x) / 2 - r.left, (a.y + b.y) / 2 - r.top); pinch = d; return }
+  const w = toWorld(e.clientX, e.clientY);
+  if (drag.kind === 'pan') { const dx = e.clientX - drag.x, dy = e.clientY - drag.y; if (Math.abs(dx) + Math.abs(dy) > 2) drag.moved = true; cancelAnimationFrame(camAnim); view.x += dx; view.y += dy; drag.x = e.clientX; drag.y = e.clientY; applyView(); return }
+  if (drag.kind === 'moveMark') { drag.moved = true; const dx = w.x - drag.sx, dy = w.y - drag.sy; const g = markEls.get(drag.m.id); g && g.setAttribute('transform', `translate(${dx},${dy})`); drag.dx = dx; drag.dy = dy; return }
+  if (drag.kind === 'erase') { eraseAt(e); return }
+  if (drag.kind === 'laser') { drag.trail.push([w.x, w.y, performance.now()]); drawLaser(); return }
+  if (drag.kind === 'draw') {
+    const m = drag.m;
+    if (m.p) { const l = m.p[m.p.length - 1]; if (Math.hypot(w.x - l[0], w.y - l[1]) * view.k > 1.5) m.p.push([r1(w.x), r1(w.y)]) }
+    else { let x2 = w.x, y2 = w.y; if (e.shiftKey) { if (m.type === 'rect' || m.type === 'ellipse') { const s = Math.max(Math.abs(x2 - m.x1), Math.abs(y2 - m.y1)); x2 = m.x1 + Math.sign(x2 - m.x1) * s; y2 = m.y1 + Math.sign(y2 - m.y1) * s } else { const a = Math.round(Math.atan2(y2 - m.y1, x2 - m.x1) / (Math.PI / 4)) * Math.PI / 4, L = Math.hypot(x2 - m.x1, y2 - m.y1); x2 = m.x1 + Math.cos(a) * L; y2 = m.y1 + Math.sin(a) * L } } m.x2 = r1(x2); m.y2 = r1(y2) }
+    gTemp.textContent = ''; drawMark(m, gTemp);
+  }
+});
+window.addEventListener('pointerup', (e) => {
+  if (!pts.has(e.pointerId)) return; pts.delete(e.pointerId); if (pts.size) return; pinch = 0; stage.classList.remove('panning');
+  const d = drag; drag = null; if (!d) return;
+  if (d.kind === 'pan' && !d.moved && d.node) { const n = byKey.get(d.node); if (n) { if (lastClick.key === n.key && performance.now() - lastClick.t < 320) { setFocus(n); lastClick = { key: null, t: 0 } } else { lastClick = { key: n.key, t: performance.now() }; clickNode(n) } } return }
+  if (d.kind === 'pan' && !d.moved && !d.node) { /* клик по пустому месту */ return }
+  if (d.kind === 'moveMark') { if (d.moved) { const to = { ...d.m, ts: d.m.ts }; shiftMark(to, d.dx, d.dy); doOp({ kind: 'move', from: d.m, to }) } else if (performance.now() - (lastMarkClick.t || 0) < 320 && lastMarkClick.id === d.m.id && (d.m.type === 'sticky' || d.m.type === 'text')) { editMarkText(d.m) } else lastMarkClick = { id: d.m.id, t: performance.now() }; return }
+  if (d.kind === 'laser') { fadeLaser(d.trail); return }
+  if (d.kind === 'draw') { gTemp.textContent = ''; const m = d.m; const tiny = m.p ? false : Math.hypot(m.x2 - m.x1, m.y2 - m.y1) * view.k < 4; if (!tiny) doOp({ kind: 'add', m }) }
+});
+let lastClick = { key: null, t: 0 }, lastMarkClick = { id: null, t: 0 };
+function shiftMark(m, dx, dy) { if (m.p) m.p = m.p.map(([x, y]) => [r1(x + dx), r1(y + dy)]); if (m.x1 !== undefined) { m.x1 = r1(m.x1 + dx); m.x2 = r1(m.x2 + dx); m.y1 = r1(m.y1 + dy); m.y2 = r1(m.y2 + dy) } if (m.x !== undefined) { m.x = r1(m.x + dx); m.y = r1(m.y + dy) } }
+function eraseAt(e) { const hit = document.elementsFromPoint(e.clientX, e.clientY); for (const h of hit) { const g = h.closest && h.closest('.mark'); if (g) { const m = marks.get(g.dataset.id); if (m && m.mine !== false) doOp({ kind: 'del', m }) } } }
+function drawLaser() { const now = performance.now(); const tr = drag ? drag.trail : []; gTemp.textContent = ''; const live = tr.filter((p) => now - p[2] < 700); if (live.length > 1) el('path', { d: smooth(live.map((p) => [p[0], p[1]])), stroke: '#ff3b3b', 'stroke-width': 4 / view.k, fill: 'none', 'stroke-linecap': 'round', opacity: 0.8 }, gTemp) }
+function fadeLaser(trail) { const t0 = performance.now(); const step = () => { const p = (performance.now() - t0) / 500; gTemp.setAttribute('opacity', String(Math.max(0, 1 - p))); if (p < 1) requestAnimationFrame(step); else { gTemp.textContent = ''; gTemp.removeAttribute('opacity') } }; requestAnimationFrame(step) }
+function openTextEditor(cx, cy, w, kind, existing) {
+  const r = stage.getBoundingClientRect(); const ta = document.createElement('textarea'); ta.className = 'textedit'; ta.id = 'textedit';
+  ta.style.left = Math.min(cx - r.left, r.width - 200) + 'px'; ta.style.top = Math.min(cy - r.top, r.height - 80) + 'px';
+  if (kind === 'sticky') { ta.style.background = '#FEF3C7'; ta.style.color = '#1A1A1A'; ta.rows = 4 }
+  ta.placeholder = kind === 'sticky' ? 'Текст стикера' : 'Текст'; ta.value = existing ? existing.text : ''; stage.appendChild(ta); setTimeout(() => ta.focus(), 0);
+  const commit = () => {
+    const v = ta.value.trim(); ta.remove();
+    if (existing) { if (v === existing.text) return; if (!v) { doOp({ kind: 'del', m: existing }); return } doOp({ kind: 'move', from: existing, to: { ...existing, text: v } }); return }
+    if (!v) return; const m = { id: newId(), type: kind, c: kind === 'sticky' ? (inkColor === '__ink__' ? '#FDE68A' : inkColor) : inkColor, text: v, x: r1(w.x), y: r1(w.y), fs: Math.round(18 / Math.max(0.5, view.k)), ts: Date.now() };
+    if (kind === 'sticky') m.wd = Math.round(190 / Math.max(0.6, Math.min(1.6, view.k)) * 1); doOp({ kind: 'add', m }); setTool('hand');
+  };
+  ta.addEventListener('blur', commit); ta.addEventListener('keydown', (e) => { if (e.key === 'Escape') { ta.value = existing ? existing.text : ''; ta.blur() } if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) ta.blur() });
+}
+function editMarkText(m) { const r = stage.getBoundingClientRect(); openTextEditor(r.left + m.x * view.k + view.x, r.top + m.y * view.k + view.y, { x: m.x, y: m.y }, m.type, m) }
+stage.addEventListener('wheel', (e) => { e.preventDefault(); const r = stage.getBoundingClientRect(); if (e.ctrlKey || Math.abs(e.deltaY) >= Math.abs(e.deltaX)) zoomAt(Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0018)), e.clientX - r.left, e.clientY - r.top); else { view.x -= e.deltaX; applyView() } }, { passive: false });
+
+// клавиатура
+document.addEventListener('keydown', (e) => {
+  const typing = /INPUT|TEXTAREA/.test(document.activeElement?.tagName || '');
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !typing) { e.preventDefault(); e.shiftKey ? redo() : undo(); return }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y' && !typing) { e.preventDefault(); redo(); return }
+  if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
+  const k = e.key;
+  if (!$('presentBar').hidden) { if (k === 'ArrowRight' || k === 'PageDown' || k === ' ') { e.preventDefault(); stepPresent(pIdx + 1); return } if (k === 'ArrowLeft' || k === 'PageUp') { e.preventDefault(); stepPresent(pIdx - 1); return } if (k === 'Escape') { stopPresent(); return } }
+  const map = { v: 'hand', b: 'pen', m: 'marker', r: 'rect', o: 'ellipse', a: 'arrow', l: 'line', t: 'text', s: 'sticky', e: 'eraser', x: 'laser' };
+  const lk = k.toLowerCase(); const ru = { м: 'v', и: 'b', ь: 'm', к: 'r', щ: 'o', ф: 'a', д: 'l', е: 't', ы: 's', у: 'e', ч: 'x', а: 'f', я: 'z', з: 'p' }; const key = ru[lk] || lk;
+  if (map[key]) { setTool(map[key]); return }
+  if (k === '/' || k === '.') { e.preventDefault(); $('q').focus(); return }
+  if (key === 'f') { fit(); return } if (key === 'z') { toggleZen(); return } if (key === 'p') { $('presentBar').hidden ? startPresent() : stopPresent(); return }
+  if (k === '1') setLayout('map'); if (k === '2') setLayout('tree'); if (k === '3') setLayout('radial');
+  if (k === '?' ) { $('help').hidden = !$('help').hidden; return }
+  if (k === '+' || k === '=') zoomAt(1.2); if (k === '-') zoomAt(1 / 1.2);
+  if (k === 'Escape') { if (!$('help').hidden) { $('help').hidden = true; return } if (stage.classList.contains('zen')) { toggleZen(); return } if (focusNode) { setFocus(focusNode.parent === ROOT ? null : focusNode.parent); return } $('side').hidden = true; selKey = null; render(false) }
+});
+
+// ───────── хранение ─────────
+const LS = 'mm-' + MODE + '-v1';
+let backend = 'local', db = null;
+const lsRead = () => { try { return JSON.parse(localStorage.getItem(LS) || '{}') } catch (e) { return {} } };
+const lsWrite = () => { try { localStorage.setItem(LS, JSON.stringify({ marks: [...marks.values()], nodes: [...over.entries()] })) } catch (e) {} };
+function loadLocal() { const s = lsRead(); (s.marks || []).forEach((m) => marks.set(m.id, m)); (s.nodes || []).forEach(([k, o]) => over.set(k, o)) }
+const writing = new Map();
+async function saveMark(m) { if (backend === 'db') { try { await db.collection('marks').doc(m.id).set(m) } catch (e) { onWriteError(e) } } else lsWrite() }
+async function deleteMark(id) { if (backend === 'db') { try { await db.collection('marks').doc(id).delete() } catch (e) { onWriteError(e) } } else lsWrite() }
+function applyNode(key, o) { if (o) over.set(key, o); else over.delete(key); rebuild(); render(); const n = byKey.get(key); if (n && selKey === key) showSide(n); if (backend === 'db') { const ref = db.collection('nodes').doc(key); (o ? ref.set(o) : ref.delete()).catch(onWriteError) } else lsWrite() }
+function putNode(key, to, from, after) { doOp({ kind: 'node', key, from: from ? { ...from } : undefined, to }); after && after() }
+function onWriteError(e) { if (e && (e.code === 'invalid_argument' || e.code === 'not_granted')) { canDraw = false; canWrite = false; buildTools(); toast('Здесь можно только смотреть: изменения не сохраняются') } else if (e && e.code === 'quota_exceeded') toast('Место для рисунков закончилось. Сотрите старые'); }
+async function initStore() {
+  if (MODE !== 'owner') { loadLocal(); redrawInk(); return }
+  const api = window.claude && window.claude.use ? window.claude : null;
+  if (!api) { loadLocal(); redrawInk(); rebuild(); render(false); status('Сохраняется только в этом браузере'); return }
+  db = await api.use('db');
+  if (!db) { loadLocal(); rebuild(); render(false); redrawInk(); status('Сохраняется только в этом браузере'); return }
+  backend = 'db';
+  try { const user = await api.use('user'); const can = user ? await user.can('data.write') : null; if (can === false) { canWrite = false; canDraw = false; buildTools(); status('Режим просмотра') } } catch (e) {}
+  let first = true; const timer = setTimeout(() => status('Рисунки пока не загрузились, проверьте интернет'), 10000);
+  db.collection('marks').onSnapshot((snap) => { clearTimeout(timer); marks.clear(); snap.docs.forEach((d) => marks.set(d.id, d.data())); redrawInk(); if (!snap.metadata.fromCache && first) { first = false; status('Рисунки и правки сохраняются и видны всем, у кого есть доступ') } }, () => { clearTimeout(timer); status('Рисунки сейчас недоступны') });
+  db.collection('nodes').onSnapshot((snap) => { over.clear(); snap.docs.forEach((d) => over.set(d.id, d.data())); rebuild(); render(); if (selKey && byKey.get(selKey) && !$('side').hidden) showSide(byKey.get(selKey)) }, () => {});
+}
+
+// ───────── картинка ─────────
+let downloads = null;
+async function initDownloads() { try { const api = window.claude; if (!api || !api.use) { downloads = { save: async ({ filename, data }) => { const u = URL.createObjectURL(data); const l = document.createElement('a'); l.href = u; l.download = filename; document.body.appendChild(l); l.click(); l.remove(); setTimeout(() => URL.revokeObjectURL(u), 4000) } }; $('bPng').hidden = false; return } downloads = await api.use('downloads'); if (downloads) $('bPng').hidden = false } catch (e) {} }
+$('bPng').onclick = async () => {
+  const vis = visibleFrom(focusRoot()); const bb = bbox(vis); for (const m of marks.values()) { const b = markBox(m); if (b) { bb.x0 = Math.min(bb.x0, b[0]); bb.y0 = Math.min(bb.y0, b[1]); bb.x1 = Math.max(bb.x1, b[2]); bb.y1 = Math.max(bb.y1, b[3]) } }
+  const pad = 60, W = bb.x1 - bb.x0 + pad * 2, H = bb.y1 - bb.y0 + pad * 2; const scale = Math.min(2, 8000 / Math.max(W, H));
+  const s = new XMLSerializer().serializeToString(svg.querySelector('defs')) + `<g transform="translate(${pad - bb.x0},${pad - bb.y0})">${gLinks.outerHTML}${gNodes.outerHTML}${gInk.outerHTML}</g>`;
+  const doc = `<svg xmlns="${NS}" width="${W * scale}" height="${H * scale}" viewBox="0 0 ${W} ${H}"><rect width="100%" height="100%" fill="${cssv('--bg2')}"/><style>text{font-family:Manrope,Segoe UI,Arial,sans-serif}.d0 .lbl{font-weight:700;font-size:18px}.d1 .lbl{font-weight:800;font-size:14px}.lbl{font-size:13px;font-weight:500}.dim{opacity:1}</style>${s}</svg>`;
+  const img = new Image(); img.onload = () => { const c = document.createElement('canvas'); c.width = W * scale; c.height = H * scale; c.getContext('2d').drawImage(img, 0, 0); c.toBlob(async (blob) => { try { await downloads.save({ filename: 'AVTOHABR-карта.png', data: blob }) } catch (e) { if (e && e.code !== 'declined') toast('Не получилось сохранить картинку') } }, 'image/png') };
+  img.onerror = () => toast('Не получилось собрать картинку'); img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(doc);
+};
+function markBox(m) { if (m.p) { const xs = m.p.map((p) => p[0]), ys = m.p.map((p) => p[1]); return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)] } if (m.x1 !== undefined) return [Math.min(m.x1, m.x2), Math.min(m.y1, m.y2), Math.max(m.x1, m.x2), Math.max(m.y1, m.y2)]; if (m.x !== undefined) return [m.x, m.y - 20, m.x + (m.wd || 200), m.y + 140]; return null }
+
+// ───────── карточки и цифры ─────────
+function buildCards() {
+  const cards = $('cards'); cards.textContent = '';
+  const li = (n) => { const x = document.createElement('li'); const b = document.createElement('span'); b.textContent = n.t; if (n.c.length) b.style.fontWeight = 700; x.appendChild(b); if (n.d) { const d = document.createElement('span'); d.className = 'd'; d.textContent = ' — ' + n.d; x.appendChild(d) } if (n.c.length) { const u = document.createElement('ul'); n.c.forEach((k) => u.appendChild(li(k))); x.appendChild(u) } return x };
+  ROOT.c.forEach((b) => { const c = document.createElement('section'); c.className = 'card'; c.style.setProperty('--c', `var(${b.color})`); const h = document.createElement('h3'); h.innerHTML = ico(b.i || 'spark', 18); h.appendChild(document.createTextNode(b.t)); c.appendChild(h); if (b.d) { const p = document.createElement('p'); p.className = 'd'; p.style.margin = '0 0 8px'; p.textContent = b.d; c.appendChild(p) } const u = document.createElement('ul'); b.c.forEach((k) => u.appendChild(li(k))); c.appendChild(u);
+    const go = document.createElement('button'); go.className = 'btn go'; go.type = 'button'; go.textContent = 'На карте'; go.onclick = () => { setFocus(b); stage.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'center' }) }; c.appendChild(go); cards.appendChild(c) });
+  let total = 0, maxD = 0; for (const n of byKey.values()) { total++; maxD = Math.max(maxD, n.depth) }
+  $('stats').innerHTML = `<div class="stat"><b>${ROOT.c.length}</b><span>ГЛАВНЫХ ВЕТОК</span></div><div class="stat"><b>${total - 1}</b><span>ПУНКТОВ</span></div><div class="stat"><b>${maxD}</b><span>УРОВНЯ</span></div>`;
+}
+
+// ───────── старт ─────────
+try { const t = localStorage.getItem('mm-theme'); if (t) document.documentElement.dataset.theme = t; const l = localStorage.getItem('mm-layout'); if (l) layoutName = l } catch (e) {}
+document.querySelectorAll('[data-layout]').forEach((x) => x.classList.toggle('on', x.dataset.layout === layoutName));
+buildTools(); loadLocalIfPublic(); buildCards();
+function loadLocalIfPublic() { if (MODE !== 'owner') { loadLocal(); redrawInk() } }
+function boot() {
+  const h = (location.hash || '').slice(1); const target = h && byKey.get(h);
+  if (target) { let p = target.parent; while (p) { p.open = true; p = p.parent } selKey = target.key }
+  render(false); fit(true); if (target) { showSide(target); setTimeout(() => flyTo(bbox([target]), 1.3), 60) }
+}
+boot();
+(document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve()).then(() => { for (const g of nodeEls.values()) g.remove(); nodeEls.clear(); render(false); fit(true) });
+window.addEventListener('hashchange', () => { const n = byKey.get(location.hash.slice(1)); if (n && n.key !== selKey) { let p = n.parent; while (p) { p.open = true; p = p.parent } select(n.key); flyTo(bbox([n]), 1.3) } });
+let rz; window.addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => fit(true), 150) });
+setTimeout(() => { if (MODE === 'owner') initStore(); initDownloads() }, 0);
+if (MODE !== 'owner') status('Рисунки видите только вы, они хранятся в этом браузере');
+</script>
+</body></html>
